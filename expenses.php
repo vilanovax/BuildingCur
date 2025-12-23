@@ -24,7 +24,10 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
 // افزودن یا ویرایش هزینه
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim($_POST['title'] ?? '');
-    $amount = intval(str_replace(',', '', $_POST['amount'] ?? 0));
+    $amountRaw = $_POST['amount'] ?? '0';
+    // حذف کاما، فاصله و کاراکترهای غیرعددی
+    $amountClean = preg_replace('/[^0-9]/', '', $amountRaw);
+    $amount = intval($amountClean);
     $year = intval($_POST['year'] ?? $currentYear);
     $month = intval($_POST['month'] ?? 1);
     $category = trim($_POST['category'] ?? '');
@@ -52,8 +55,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if (empty($title) || $amount <= 0) {
-        $error = 'عنوان و مبلغ الزامی است';
+    if (empty($title)) {
+        $error = 'عنوان الزامی است';
+    } elseif ($amount <= 0) {
+        $error = 'مبلغ الزامی است (مقدار وارد شده: ' . e($amountRaw) . ')';
     } elseif (empty($error)) {
         if ($edit_id > 0) {
             if ($hasNewImage) {
