@@ -25,8 +25,12 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim($_POST['title'] ?? '');
     $amountRaw = $_POST['amount'] ?? '0';
+    // تبدیل ارقام فارسی به انگلیسی
+    $persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    $englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    $amountConverted = str_replace($persianDigits, $englishDigits, $amountRaw);
     // حذف کاما، فاصله و کاراکترهای غیرعددی
-    $amountClean = preg_replace('/[^0-9]/', '', $amountRaw);
+    $amountClean = preg_replace('/[^0-9]/', '', $amountConverted);
     $amount = intval($amountClean);
     $year = intval($_POST['year'] ?? $currentYear);
     $month = intval($_POST['month'] ?? 1);
