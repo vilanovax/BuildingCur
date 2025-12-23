@@ -24,11 +24,19 @@ if (isset($_GET['toggle']) && is_numeric($_GET['toggle'])) {
     exit;
 }
 
+// تابع تبدیل ارقام فارسی به انگلیسی
+function convertPersianNumbers($string) {
+    $persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    $englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    return str_replace($persianDigits, $englishDigits, $string);
+}
+
 // ایجاد شارژ برای همه واحدها در یک ماه
 if (isset($_POST['generate_charges'])) {
     $month = intval($_POST['month']);
     $year = intval($_POST['year']);
-    $amount = intval(str_replace(',', '', $_POST['amount']));
+    $amountRaw = convertPersianNumbers($_POST['amount'] ?? '0');
+    $amount = intval(preg_replace('/[^0-9]/', '', $amountRaw));
 
     $units = $pdo->query("SELECT id FROM units WHERE is_active = 1")->fetchAll();
     $stmt = $pdo->prepare("INSERT IGNORE INTO charges (unit_id, year, month, amount, is_paid) VALUES (?, ?, ?, ?, 0)");
@@ -48,7 +56,8 @@ if (isset($_POST['generate_charges'])) {
 // ویرایش مبلغ شارژ
 if (isset($_POST['update_charge'])) {
     $chargeId = intval($_POST['charge_id']);
-    $amount = intval(str_replace(',', '', $_POST['amount']));
+    $amountRaw = convertPersianNumbers($_POST['amount'] ?? '0');
+    $amount = intval(preg_replace('/[^0-9]/', '', $amountRaw));
     $notes = trim($_POST['notes'] ?? '');
 
     $stmt = $pdo->prepare("UPDATE charges SET amount = ?, notes = ? WHERE id = ?");
