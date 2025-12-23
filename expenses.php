@@ -31,17 +31,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $description = trim($_POST['description'] ?? '');
     $edit_id = intval($_POST['edit_id'] ?? 0);
 
+    // پردازش تصویر
+    $imageData = null;
+    $imageType = null;
+    $hasNewImage = false;
+
+    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        $fileType = $_FILES['image']['type'];
+        $fileSize = $_FILES['image']['size'];
+
+        if (!in_array($fileType, $allowedTypes)) {
+            $error = 'فقط تصاویر JPG، PNG، GIF و WebP مجاز هستند';
+        } elseif ($fileSize > 5 * 1024 * 1024) { // 5MB
+            $error = 'حجم تصویر نباید بیشتر از 5 مگابایت باشد';
+        } else {
+            $imageData = file_get_contents($_FILES['image']['tmp_name']);
+            $imageType = $fileType;
+            $hasNewImage = true;
+        }
+    }
+
     if (empty($title) || $amount <= 0) {
         $error = 'عنوان و مبلغ الزامی است';
-    } else {
+    } elseif (empty($error)) {
         if ($edit_id > 0) {
-            $stmt = $pdo->prepare("UPDATE expenses SET title = ?, amount = ?, year = ?, month = ?, category = ?, description = ? WHERE id = ?");
-            if ($stmt->execute([$title, $amount, $year, $month, $category, $description, $edit_id])) {
-                $message = 'هزینه با موفقیت ویرایش شد';
+            if ($hasNewImage) {
+                $stmt = $pdo->prepare("UPDATE expenses SET title = ?, amount = ?, year = ?, month = ?, category = ?, description = ?, image_data = ?, image_type = ? WHERE id = ?");
+                $stmt->execute([$title, $amount, $year, $month, $category, $description, $imageData, $imageType, $edit_id]);
+            } else {
+                $stmt = $pdo->prepare("UPDATE expenses SET title = ?, amount = ?, year = ?, month = ?, category = ?, description = ? WHERE id = ?");
+                $stmt->execute([$title, $amount, $year, $month, $category, $description, $edit_id]);
             }
+            $message = 'هزینه با موفقیت ویرایش شد';
         } else {
-            $stmt = $pdo->prepare("INSERT INTO expenses (title, amount, year, month, category, description) VALUES (?, ?, ?, ?, ?, ?)");
-            if ($stmt->execute([$title, $amount, $year, $month, $category, $description])) {
+            $stmt = $pdo->prepare("INSERT INTO expenses (title, amount, year, month, category, description, image_data, image_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            if ($stmt->execute([$title, $amount, $year, $month, $category, $description, $imageData, $imageType])) {
                 $message = 'هزینه با موفقیت ثبت شد';
             }
         }
@@ -78,7 +103,7 @@ $stmt->execute($statsParams);
 $totalExpenses = $stmt->fetchColumn();
 
 // دسته‌بندی‌ها
-$categories = ['برق', 'آب', 'گاز', 'نظافت', 'تعمیرات', 'آسانسور', 'باغبانی', 'متفرقه'];
+$categories = ['برق', 'آب', 'گاز', 'نظافت', 'تعمیرات', 'آسانسور', 'باغبانی', 'موتورخانه', 'متفرقه'];
 
 include 'includes/header.php';
 ?>
@@ -103,7 +128,7 @@ include 'includes/header.php';
 <!-- فرم افزودن/ویرایش -->
 <div class="bg-white rounded-xl p-4 shadow mb-6">
     <h2 class="font-bold text-gray-800 mb-4"><?= $editExpense ? 'ویرایش هزینه' : 'ثبت هزینه جدید' ?></h2>
-    <form method="POST" class="space-y-4">
+    <form method="POST" enctype="multipart/form-data" class="space-y-4">
         <?php if ($editExpense): ?>
         <input type="hidden" name="edit_id" value="<?= $editExpense['id'] ?>">
         <?php endif; ?>
@@ -159,6 +184,21 @@ include 'includes/header.php';
             <textarea name="description" rows="2"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="توضیحات اضافی..."><?= e($editExpense['description'] ?? '') ?></textarea>
+        </div>
+
+        <div>
+            <label class="block text-gray-700 text-sm font-medium mb-1">تصویر (اختیاری)</label>
+            <div class="flex items-center gap-4">
+                <input type="file" name="image" accept="image/*"
+                    class="block w-full text-sm text-gray-500 file:ml-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                <?php if ($editExpense && $editExpense['image_data']): ?>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-green-600">تصویر موجود است</span>
+                    <a href="image.php?id=<?= $editExpense['id'] ?>" target="_blank" class="text-blue-500 hover:text-blue-700 text-sm">مشاهده</a>
+                </div>
+                <?php endif; ?>
+            </div>
+            <p class="text-xs text-gray-400 mt-1">فرمت‌های مجاز: JPG، PNG، GIF، WebP - حداکثر 5 مگابایت</p>
         </div>
 
         <div class="flex gap-2">
@@ -221,17 +261,29 @@ include 'includes/header.php';
         <?php foreach ($expenses as $expense): ?>
         <div class="p-4 hover:bg-gray-50">
             <div class="flex items-center justify-between">
-                <div class="flex-1">
-                    <div class="flex items-center gap-2 mb-1">
-                        <p class="font-medium text-gray-800"><?= e($expense['title']) ?></p>
-                        <?php if ($expense['category']): ?>
-                        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded"><?= e($expense['category']) ?></span>
+                <div class="flex items-center gap-3 flex-1">
+                    <?php if ($expense['image_data']): ?>
+                    <a href="image.php?id=<?= $expense['id'] ?>" target="_blank" class="flex-shrink-0">
+                        <img src="image.php?id=<?= $expense['id'] ?>" alt="تصویر" class="w-12 h-12 rounded-lg object-cover border border-gray-200">
+                    </a>
+                    <?php endif; ?>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <p class="font-medium text-gray-800"><?= e($expense['title']) ?></p>
+                            <?php if ($expense['category']): ?>
+                            <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded"><?= e($expense['category']) ?></span>
+                            <?php endif; ?>
+                            <?php if ($expense['image_data']): ?>
+                            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                            <?php endif; ?>
+                        </div>
+                        <p class="text-sm text-gray-500"><?= $persian_months[$expense['month']] ?> <?= $expense['year'] ?></p>
+                        <?php if ($expense['description']): ?>
+                        <p class="text-sm text-gray-400 mt-1"><?= e($expense['description']) ?></p>
                         <?php endif; ?>
                     </div>
-                    <p class="text-sm text-gray-500"><?= $persian_months[$expense['month']] ?> <?= $expense['year'] ?></p>
-                    <?php if ($expense['description']): ?>
-                    <p class="text-sm text-gray-400 mt-1"><?= e($expense['description']) ?></p>
-                    <?php endif; ?>
                 </div>
                 <div class="flex items-center gap-4">
                     <span class="text-lg font-bold text-orange-600"><?= number_format($expense['amount']) ?></span>
